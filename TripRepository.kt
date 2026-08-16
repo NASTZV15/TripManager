@@ -1,144 +1,112 @@
 package com.tripmanager.data.database
 
-import android.content.ContentValues
-import android.content.Context
 import com.tripmanager.data.models.Trip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import android.content.Context
 
-class TripRepository(context: Context) {
+class TripRepository(
+    private val databaseHelper =
+        DatabaseHelper.getInstance(context)
+) {
 
-    private val dbHelper = DatabaseHelper.getInstance(context)
+    suspend fun getAllTrips(): List<Trip> = withContext(Dispatchers.IO) {
+        val db = databaseHelper.readableDatabase
+        val trips = mutableListOf<Trip>()
 
-    /**
-     * Получить все поездки.
-     */
-    suspend fun getAllTrips(): List<Trip> =
-        withContext(Dispatchers.IO) {
+        val cursor = db.rawQuery(
+            """
+            SELECT id, name, destination, start_date, end_date, created_at
+            FROM trips
+            ORDER BY created_at DESC
+            """.trimIndent(),
+            null
+        )
 
-            val trips = mutableListOf<Trip>()
+        cursor.use {
+            while (it.moveToNext()) {
 
-            val db = dbHelper.readableDatabase
+                val id = it.getLongOrNull("id") ?: 0L
 
-            val cursor = db.query(
-                "trips",
-                arrayOf(
-                    "id",
-                    "name",
-                    "destination",
-                    "start_date",
-                    "end_date",
-                    "created_at"
-                ),
-                null,
-                null,
-                null,
-                null,
-                "created_at DESC"
-            )
+                val name = it.getStringOrNull("name") ?: ""
 
-            cursor.use {
+                val destination =
+                    it.getStringOrNull("destination")
 
-                while (it.moveToNext()) {
+                val startDate =
+                    getDateAsTimestamp(it, "start_date")
 
-                    trips.add(
-                        Trip(
-                            id = it.getLong(
-                                it.getColumnIndexOrThrow("id")
-                            ),
+                val endDate =
+                    getDateAsTimestamp(it, "end_date")
 
-                            name = it.getString(
-                                it.getColumnIndexOrThrow("name")
-                            ),
+                val createdAt =
+                    getDateAsTimestamp(it, "created_at")
+                        ?: System.currentTimeMillis()
 
-                            destination =
-                                it.getStringOrNull(
-                                    "destination"
-                                ),
-
-                            startDate =
-                                it.getLongOrNull(
-                                    "start_date"
-                                ),
-
-                            endDate =
-                                it.getLongOrNull(
-                                    "end_date"
-                                ),
-
-                            createdAt =
-                                it.getLongOrNull(
-                                    "created_at"
-                                )
-                                    ?: System.currentTimeMillis()
-                        )
+                trips.add(
+                    Trip(
+                        id = id,
+                        name = name,
+                        destination = destination,
+                        startDate = startDate,
+                        endDate = endDate,
+                        createdAt = createdAt
                     )
-                }
+                )
             }
-
-            trips
         }
 
-    /**
-     * Получить одну поездку по ID.
-     */
-    suspend fun getTripById(
-        tripId: Long
-    ): Trip? =
+        trips
+    }
+
+    suspend fun getTripById(tripId: Long): Trip? =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.readableDatabase
+            val db = databaseHelper.readableDatabase
 
-            val cursor = db.query(
-                "trips",
-                arrayOf(
-                    "id",
-                    "name",
-                    "destination",
-                    "start_date",
-                    "end_date",
-                    "created_at"
-                ),
-                "id = ?",
-                arrayOf(tripId.toString()),
-                null,
-                null,
-                null,
-                "1"
+            val cursor = db.rawQuery(
+                """
+                SELECT id, name, destination, start_date, end_date, created_at
+                FROM trips
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent(),
+                arrayOf(tripId.toString())
             )
 
             cursor.use {
-
                 if (!it.moveToFirst()) {
                     return@withContext null
                 }
 
                 Trip(
-                    id = it.getLong(
-                        it.getColumnIndexOrThrow("id")
-                    ),
+                    id = it.getLongOrNull("id") ?: tripId,
 
-                    name = it.getString(
-                        it.getColumnIndexOrThrow("name")
-                    ),
+                    name =
+                        it.getStringOrNull("name")
+                            ?: "",
 
                     destination =
-                        it.getStringOrNull(
-                            "destination"
-                        ),
+                        it.getStringOrNull("destination"),
 
                     startDate =
-                        it.getLongOrNull(
+                        getDateAsTimestamp(
+                            it,
                             "start_date"
                         ),
 
                     endDate =
-                        it.getLongOrNull(
+                        getDateAsTimestamp(
+                            it,
                             "end_date"
                         ),
 
                     createdAt =
-                        it.getLongOrNull(
+                        getDateAsTimestamp(
+                            it,
                             "created_at"
                         )
                             ?: System.currentTimeMillis()
@@ -146,63 +114,38 @@ class TripRepository(context: Context) {
             }
         }
 
-    /**
-     * Добавить поездку.
-     *
-     * Если id == 0, SQLite создаст его автоматически.
-     * Если id > 0, сохраняем существующий ID.
-     *
-     * Это особенно важно для импорта .db из ПК-версии.
-     */
-    suspend fun insertTrip(
-        trip: Trip
-    ): Long =
+    suspend fun insertTrip(trip: Trip): Long =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.writableDatabase
+            val db = databaseHelper.writableDatabase
 
-            val values = ContentValues().apply {
+            val values = android.content.ContentValues().apply {
 
                 if (trip.id > 0) {
                     put("id", trip.id)
                 }
 
-                put(
-                    "name",
-                    trip.name
-                )
+                put("name", trip.name)
 
                 if (trip.destination != null) {
-                    put(
-                        "destination",
-                        trip.destination
-                    )
+                    put("destination", trip.destination)
                 } else {
                     putNull("destination")
                 }
 
                 if (trip.startDate != null) {
-                    put(
-                        "start_date",
-                        trip.startDate
-                    )
+                    put("start_date", trip.startDate)
                 } else {
                     putNull("start_date")
                 }
 
                 if (trip.endDate != null) {
-                    put(
-                        "end_date",
-                        trip.endDate
-                    )
+                    put("end_date", trip.endDate)
                 } else {
                     putNull("end_date")
                 }
 
-                put(
-                    "created_at",
-                    trip.createdAt
-                )
+                put("created_at", trip.createdAt)
             }
 
             db.insertOrThrow(
@@ -212,111 +155,72 @@ class TripRepository(context: Context) {
             )
         }
 
-    /**
-     * Обновить поездку.
-     */
-    suspend fun updateTrip(
-        trip: Trip
-    ) =
+    suspend fun updateTrip(trip: Trip) =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.writableDatabase
+            val db = databaseHelper.writableDatabase
 
-            val values = ContentValues().apply {
+            val values = android.content.ContentValues().apply {
 
-                put(
-                    "name",
-                    trip.name
-                )
+                put("name", trip.name)
 
                 if (trip.destination != null) {
-                    put(
-                        "destination",
-                        trip.destination
-                    )
+                    put("destination", trip.destination)
                 } else {
                     putNull("destination")
                 }
 
                 if (trip.startDate != null) {
-                    put(
-                        "start_date",
-                        trip.startDate
-                    )
+                    put("start_date", trip.startDate)
                 } else {
                     putNull("start_date")
                 }
 
                 if (trip.endDate != null) {
-                    put(
-                        "end_date",
-                        trip.endDate
-                    )
+                    put("end_date", trip.endDate)
                 } else {
                     putNull("end_date")
                 }
 
-                put(
-                    "created_at",
-                    trip.createdAt
-                )
+                put("created_at", trip.createdAt)
             }
 
             db.update(
                 "trips",
                 values,
                 "id = ?",
-                arrayOf(
-                    trip.id.toString()
-                )
+                arrayOf(trip.id.toString())
             )
         }
 
-    /**
-     * Удалить одну поездку.
-     *
-     * Если в DatabaseHelper включён foreign key,
-     * связанные wallets/expenses и т.д.
-     * также будут удалены согласно ON DELETE CASCADE.
-     */
-    suspend fun deleteTrip(
-        trip: Trip
-    ) =
+    suspend fun deleteTrip(trip: Trip) =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.writableDatabase
+            val db = databaseHelper.writableDatabase
 
             db.delete(
                 "trips",
                 "id = ?",
-                arrayOf(
-                    trip.id.toString()
-                )
+                arrayOf(trip.id.toString())
             )
         }
 
-    /**
-     * Удалить все поездки.
-     */
-    suspend fun deleteAll() =
+    suspend fun deleteTripById(tripId: Long) =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.writableDatabase
+            val db = databaseHelper.writableDatabase
 
             db.delete(
                 "trips",
-                null,
-                null
+                "id = ?",
+                arrayOf(tripId.toString())
             )
         }
 
-    /**
-     * Количество поездок.
-     */
     suspend fun getCount(): Int =
         withContext(Dispatchers.IO) {
 
-            val db = dbHelper.readableDatabase
+            val db = databaseHelper.readableDatabase
 
             val cursor = db.rawQuery(
                 "SELECT COUNT(*) FROM trips",
@@ -324,7 +228,6 @@ class TripRepository(context: Context) {
             )
 
             cursor.use {
-
                 if (it.moveToFirst()) {
                     it.getInt(0)
                 } else {
@@ -333,39 +236,123 @@ class TripRepository(context: Context) {
             }
         }
 
-    /**
-     * Безопасно получить Long из SQLite.
-     *
-     * SQLite INTEGER -> Long.
-     */
-    private fun android.database.Cursor.getLongOrNull(
+    private fun getDateAsTimestamp(
+        cursor: android.database.Cursor,
         columnName: String
     ): Long? {
 
-        val index =
-            getColumnIndex(columnName)
+        val index = cursor.getColumnIndex(columnName)
 
-        if (index < 0 || isNull(index)) {
+        if (index < 0 || cursor.isNull(index)) {
             return null
         }
 
-        return getLong(index)
+        /*
+         * В Android SQLite наша БД может содержать:
+         *
+         * 1. INTEGER:
+         *    1776816000000
+         *
+         * 2. TEXT:
+         *    2026-08-20
+         *
+         * 3. TEXT:
+         *    2026-08-20 00:00:00
+         *
+         * 4. TEXT:
+         *    20.08.2026
+         *
+         * Поэтому сначала читаем значение
+         * как String и затем определяем формат.
+         */
+
+        val value = cursor.getString(index)?.trim()
+
+        if (value.isNullOrEmpty()) {
+            return null
+        }
+
+        // Если это Unix timestamp
+        value.toLongOrNull()?.let { number ->
+
+            /*
+             * Если число очень маленькое, это может быть
+             * Unix timestamp в секундах, а не миллисекундах.
+             *
+             * Например:
+             * 1787000000
+             *
+             * превращаем в:
+             * 1787000000000
+             */
+
+            return if (number in 1..10_000_000_000L) {
+                number * 1000L
+            } else {
+                number
+            }
+        }
+
+        val formats = listOf(
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd",
+            "dd.MM.yyyy",
+            "dd.MM.yyyy HH:mm:ss"
+        )
+
+        for (format in formats) {
+
+            try {
+
+                val formatter =
+                    SimpleDateFormat(
+                        format,
+                        Locale.US
+                    )
+
+                formatter.isLenient = false
+
+                val date =
+                    formatter.parse(value)
+
+                if (date != null) {
+                    return date.time
+                }
+
+            } catch (_: Exception) {
+                // Пробуем следующий формат
+            }
+        }
+
+        return null
     }
 
-    /**
-     * Безопасно получить String из SQLite.
-     */
     private fun android.database.Cursor.getStringOrNull(
         columnName: String
     ): String? {
 
-        val index =
-            getColumnIndex(columnName)
+        val index = getColumnIndex(columnName)
 
         if (index < 0 || isNull(index)) {
             return null
         }
 
         return getString(index)
+    }
+
+    private fun android.database.Cursor.getLongOrNull(
+        columnName: String
+    ): Long? {
+
+        val index = getColumnIndex(columnName)
+
+        if (index < 0 || isNull(index)) {
+            return null
+        }
+
+        return getLong(index)
     }
 }

@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.textfield.TextInputEditText
 import com.tripmanager.R
+import com.tripmanager.data.database.DatabaseHelper
 import com.tripmanager.data.database.TripRepository
 import com.tripmanager.data.models.Trip
 import com.tripmanager.databinding.FragmentTripsBinding

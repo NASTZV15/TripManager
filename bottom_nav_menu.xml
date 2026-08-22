@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/navigation_home"
+        android:icon="@drawable/ic_home"
+        android:title="Главная" />
+    <item
+        android:id="@+id/navigation_trips"
+        android:icon="@drawable/ic_trips"
+        android:title="Поездки" />
+    <item
+        android:id="@+id/navigation_expenses"
+        android:icon="@drawable/ic_expenses"
+        android:title="Расходы" />
+    <item
+        android:id="@+id/navigation_debts"
+        android:icon="@drawable/ic_debts"
+        android:title="Долги" />
+    <item
+        android:id="@+id/navigation_calendar"
+        android:icon="@drawable/ic_calendar"
+        android:title="Календарь" />
+</menu>
